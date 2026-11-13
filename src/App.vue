@@ -1,13 +1,16 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import scenarios from './assets/scenarios.json'
 
 const rosterStorageKey = 'roundkeeper.character-roster'
 const rosterStorageError = ref('')
 const selectedTheme = ref('default')
+const selectedScenario = ref('')
 const themes = [
   { value: 'default', label: 'Default' },
-  { value: 'spring', label: 'Spring' },
   { value: 'elegant', label: 'Elegant' },
+  { value: 'spring', label: 'Spring' },
+  { value: 'harvest', label: 'Harvest' },
   { value: 'fall', label: 'Fall' },
   { value: 'frost', label: 'Frost' },
 ]
@@ -101,12 +104,35 @@ function addParticipant(type) {
   participants.value.push({
     id: nextId++,
     type,
+    source: 'manual',
     name: isCharacter ? 'New character' : 'New monster',
     detail: '',
     initiative: null,
     initiativeDraft: '',
     acted: false,
   })
+}
+
+function loadScenarioMonsters(scenarioName) {
+  const scenario = scenarios.find(({ name }) => name === scenarioName)
+  if (!scenario) throw new Error(`Unknown scenario: ${scenarioName}`)
+
+  selectedScenario.value = scenarioName
+  const existingParticipants = participants.value.filter(
+    (participant) => participant.source !== 'scenario',
+  )
+  const scenarioMonsters = scenario.monsters.map((monster) => ({
+    id: nextId++,
+    type: 'monster',
+    source: 'scenario',
+    name: monster.name,
+    detail: '',
+    initiative: null,
+    initiativeDraft: '',
+    acted: false,
+  }))
+
+  participants.value = [...existingParticipants, ...scenarioMonsters]
 }
 
 function toggleActed(participant) {
@@ -166,7 +192,7 @@ function removeParticipant(id) {
     <main class="tracker">
       <section class="round-heading" aria-labelledby="page-title">
         <div>
-          <p class="eyebrow">CAMPAIGN TABLE</p>
+          <!-- <p class="eyebrow">CAMPAIGN TABLE</p> -->
           <h1 id="page-title">Initiative order</h1>
           <p class="intro">Enter each initiative as it’s revealed. The order updates automatically.</p>
         </div>
@@ -176,7 +202,24 @@ function removeParticipant(id) {
         </div>
       </section>
 
-      <section class="round-controls" aria-label="Round controls">
+      <section class="round-controls" aria-label="Scenario and round controls">
+        <div class="scenario-picker">
+          <label for="scenario-select">Scenario</label>
+          <select
+            id="scenario-select"
+            v-model="selectedScenario"
+            aria-label="Choose a scenario"
+            @change="loadScenarioMonsters($event.target.value)"
+          >
+            <option value="" disabled>Select a scenario</option>
+            <option v-for="scenario in scenarios" :key="scenario.name" :value="scenario.name">
+              {{ scenario.name }}
+            </option>
+          </select>
+          <p class="scenario-help">
+            Changing scenarios replaces their generated monsters, while keeping characters and manually added monsters.
+          </p>
+        </div>
         <div class="progress-label">
           <span>{{ assignedCount }} <span class="muted">/ {{ participants.length }} initiatives</span></span>
           <span v-if="assignedCount === participants.length && participants.length" class="ready-label">
@@ -262,7 +305,7 @@ function removeParticipant(id) {
             @click="toggleActed(participant)"
           >
             <span class="acted-check" aria-hidden="true">{{ participant.acted ? '✓' : '' }}</span>
-            <span>{{ participant.acted ? 'Done' : 'Mark done' }}</span>
+            <span>{{ participant.acted ? 'Done' : 'End turn' }}</span>
           </button>
           <button
             class="remove-button"

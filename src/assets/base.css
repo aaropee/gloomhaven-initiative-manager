@@ -21,6 +21,7 @@
   --color-accent: #9a5a1c;
   --color-accent-text: #805016;
   --color-accent-secondary: #843e2b;
+  --color-accent-secondary-text: var(--color-accent-secondary);
   --color-accent-secondary-soft: #f4e6dd;
   --color-copy-accent: #843e2b;
   --color-focus: #805016;

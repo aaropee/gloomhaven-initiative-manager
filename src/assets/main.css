@@ -82,6 +82,33 @@
   --color-shadow: rgba(94, 41, 31, 0.12);
 }
 
+.app-shell[data-theme='harvest'] {
+  --color-background: #fff0d8;
+  --color-surface: #fff8ed;
+  --color-surface-raised: #fffdf7;
+  --color-surface-muted: #ffe2bd;
+  --color-header: #fff8ef;
+  --color-text: #4b2618;
+  --color-text-secondary: #633b2a;
+  --color-text-subtle: #704731;
+  --color-border: #feab3e;
+  --color-border-soft: #f6c77f;
+  --color-primary: #a93412;
+  --color-primary-hover: #8f2d11;
+  --color-primary-soft: #fff0df;
+  --color-primary-border: #ff8c66;
+  --color-progress: #f57a00;
+  --color-accent: #feb952;
+  --color-accent-text: #77401d;
+  --color-accent-secondary: #d54215;
+  --color-accent-secondary-text: #a93412;
+  --color-accent-secondary-soft: #ffebe3;
+  --color-copy-accent: #962f12;
+  --color-focus: #a93412;
+  --color-ambient-glow: rgba(245, 122, 0, 0.14);
+  --color-shadow: rgba(96, 44, 21, 0.12);
+}
+
 .app-shell[data-theme='frost'] {
   --color-background: #e2edf4;
   --color-surface: #f2f7fa;
@@ -259,6 +286,41 @@ h1 {
   background: var(--color-surface-raised);
 }
 
+.scenario-picker {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px 12px;
+  max-width: 540px;
+  margin-bottom: 16px;
+}
+
+.scenario-picker label {
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.scenario-picker select {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 34px 0 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.scenario-help {
+  grid-column: 2;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .progress-label {
   display: flex;
   align-items: center;
@@ -403,7 +465,7 @@ button {
 }
 
 .is-monster .type-label {
-  color: var(--color-accent-secondary);
+  color: var(--color-accent-secondary-text);
 }
 
 .name-input,
@@ -556,7 +618,7 @@ button {
 
 .remove-button:hover {
   background: var(--color-accent-secondary-soft);
-  color: var(--color-accent-secondary);
+  color: var(--color-accent-secondary-text);
 }
 
 .add-controls {
@@ -694,6 +756,15 @@ select:focus-visible {
 
   .round-controls {
     padding: 14px;
+  }
+
+  .scenario-picker {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .scenario-help {
+    grid-column: 1;
   }
 
   .initiative-card {
