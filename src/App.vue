@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import monsterClasses from './assets/monster-classes.json'
 import scenarios from './assets/scenarios.json'
 
 const rosterStorageKey = 'roundkeeper.character-roster'
@@ -14,6 +15,13 @@ const themes = [
   { value: 'fall', label: 'Fall' },
   { value: 'frost', label: 'Frost' },
 ]
+const normalizeMonsterName = (name) => name.trim().replace(/\s+/g, ' ')
+const monsterClassByName = new Map(
+  Object.entries(monsterClasses).map(([name, monsterClass]) => [
+    normalizeMonsterName(name),
+    monsterClass,
+  ]),
+)
 
 function createDefaultCharacters() {
   return Array.from({ length: 4 }, (_, index) => ({
@@ -117,22 +125,32 @@ function loadScenarioMonsters(scenarioName) {
   const scenario = scenarios.find(({ name }) => name === scenarioName)
   if (!scenario) throw new Error(`Unknown scenario: ${scenarioName}`)
 
-  selectedScenario.value = scenarioName
   const existingParticipants = participants.value.filter(
     (participant) => participant.source !== 'scenario',
   )
-  const scenarioMonsters = scenario.monsters.map((monster) => ({
+  const scenarioMonsters = scenario.monsters.map((monster) => {
+    const name = normalizeMonsterName(monster.name)
+    const detail = monsterClassByName.get(name)
+    if (!detail) throw new Error(`Missing class mapping for monster: ${monster.name}`)
+
+    return {
+      type: 'monster',
+      source: 'scenario',
+      name,
+      detail,
+      initiative: null,
+      initiativeDraft: '',
+      acted: false,
+    }
+  })
+
+  const identifiedScenarioMonsters = scenarioMonsters.map((monster) => ({
     id: nextId++,
-    type: 'monster',
-    source: 'scenario',
-    name: monster.name,
-    detail: '',
-    initiative: null,
-    initiativeDraft: '',
-    acted: false,
+    ...monster,
   }))
 
-  participants.value = [...existingParticipants, ...scenarioMonsters]
+  selectedScenario.value = scenarioName
+  participants.value = [...existingParticipants, ...identifiedScenarioMonsters]
 }
 
 function toggleActed(participant) {
@@ -193,7 +211,7 @@ function removeParticipant(id) {
       <section class="round-heading" aria-labelledby="page-title">
         <div>
           <!-- <p class="eyebrow">CAMPAIGN TABLE</p> -->
-          <h1 id="page-title">Initiative order</h1>
+          <h1 id="page-title">Initiative orderify</h1>
           <p class="intro">Enter each initiative as it’s revealed. The order updates automatically.</p>
         </div>
         <div class="round-token" aria-label="Current round">
