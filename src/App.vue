@@ -211,7 +211,7 @@ function removeParticipant(id) {
       <section class="round-heading" aria-labelledby="page-title">
         <div>
           <!-- <p class="eyebrow">CAMPAIGN TABLE</p> -->
-          <h1 id="page-title">Initiative orderify</h1>
+          <h1 id="page-title">Order of Initiative</h1>
           <p class="intro">Enter each initiative as it’s revealed. The order updates automatically.</p>
         </div>
         <div class="round-token" aria-label="Current round">
