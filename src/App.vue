@@ -3,6 +3,14 @@ import { computed, ref, watch } from 'vue'
 
 const rosterStorageKey = 'roundkeeper.character-roster'
 const rosterStorageError = ref('')
+const selectedTheme = ref('default')
+const themes = [
+  { value: 'default', label: 'Default' },
+  { value: 'spring', label: 'Spring' },
+  { value: 'elegant', label: 'Elegant' },
+  { value: 'fall', label: 'Fall' },
+  { value: 'frost', label: 'Frost' },
+]
 
 function createDefaultCharacters() {
   return Array.from({ length: 4 }, (_, index) => ({
@@ -139,13 +147,20 @@ function removeParticipant(id) {
 </script>
 
 <template>
-  <div class="app-shell">
+  <div class="app-shell" :data-theme="selectedTheme">
     <header class="topbar">
       <a class="brand" href="#" aria-label="Roundkeeper home">
         <span class="brand-mark" aria-hidden="true">R</span>
         <span>ROUNDKEEPER</span>
       </a>
-      <span class="topbar-note">A tabletop initiative tracker</span>
+      <label class="theme-picker" for="theme-select">
+        <span class="theme-picker-label">Theme</span>
+        <select id="theme-select" v-model="selectedTheme" aria-label="Color theme">
+          <option v-for="theme in themes" :key="theme.value" :value="theme.value">
+            {{ theme.label }}
+          </option>
+        </select>
+      </label>
     </header>
 
     <main class="tracker">
@@ -247,7 +262,7 @@ function removeParticipant(id) {
             @click="toggleActed(participant)"
           >
             <span class="acted-check" aria-hidden="true">{{ participant.acted ? '✓' : '' }}</span>
-            <span>{{ participant.acted ? 'Acted' : 'Mark acted' }}</span>
+            <span>{{ participant.acted ? 'Done' : 'Mark done' }}</span>
           </button>
           <button
             class="remove-button"
