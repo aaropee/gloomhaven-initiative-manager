@@ -3,9 +3,10 @@ import { computed, ref, watch } from 'vue'
 import monsterClasses from './assets/monster-classes.json'
 import scenarios from './assets/scenarios.json'
 
-const rosterStorageKey = 'roundkeeper.character-roster'
+const rosterStorageKey = 'roundtracker.character-roster'
+const themeStorageKey = 'roundtracker.color-theme'
 const rosterStorageError = ref('')
-const selectedTheme = ref('default')
+const themeStorageError = ref('')
 const selectedScenario = ref('')
 const themes = [
   { value: 'default', label: 'Default' },
@@ -15,6 +16,21 @@ const themes = [
   { value: 'fall', label: 'Fall' },
   { value: 'frost', label: 'Frost' },
 ]
+const storageError = computed(() =>
+  [rosterStorageError.value, themeStorageError.value].filter(Boolean).join(' '),
+)
+
+function loadSelectedTheme() {
+  try {
+    const savedTheme = localStorage.getItem(themeStorageKey)
+    return themes.some((theme) => theme.value === savedTheme) ? savedTheme : 'default'
+  } catch (error) {
+    themeStorageError.value = 'Could not load the saved theme. The default theme will be used.'
+    return 'default'
+  }
+}
+
+const selectedTheme = ref(loadSelectedTheme())
 const normalizeMonsterName = (name) => name.trim().replace(/\s+/g, ' ')
 const monsterClassByName = new Map(
   Object.entries(monsterClasses).map(([name, monsterClass]) => [
@@ -107,6 +123,15 @@ watch(
   { deep: true },
 )
 
+watch(selectedTheme, (theme) => {
+  try {
+    localStorage.setItem(themeStorageKey, theme)
+    themeStorageError.value = ''
+  } catch (error) {
+    themeStorageError.value = 'Could not save the selected theme on this device.'
+  }
+})
+
 function addParticipant(type) {
   const isCharacter = type === 'character'
   participants.value.push({
@@ -193,9 +218,9 @@ function removeParticipant(id) {
 <template>
   <div class="app-shell" :data-theme="selectedTheme">
     <header class="topbar">
-      <a class="brand" href="#" aria-label="Roundkeeper home">
-        <span class="brand-mark" aria-hidden="true">R</span>
-        <span>ROUNDKEEPER</span>
+      <a class="brand" href="#" aria-label="Roundtracker home">
+        <span class="brand-mark" style="width: 100%; padding: 0 7px;" aria-hidden="true">Gloomhaven</span>
+        <span style="text-transform: uppercase; display: none;">Roundtracker</span>
       </a>
       <label class="theme-picker" for="theme-select">
         <span class="theme-picker-label">Theme</span>
@@ -351,11 +376,11 @@ function removeParticipant(id) {
         </button>
       </section>
 
-      <p v-if="rosterStorageError" class="footer-note storage-warning" role="status">
-        {{ rosterStorageError }}
+      <p v-if="storageError" class="footer-note storage-warning" role="status">
+        {{ storageError }}
       </p>
       <p v-else class="footer-note">
-        Character names and classes save on this device. Monster groups and round status reset on refresh.
+        Character names, classes, and theme save on this device. Monster groups and round status reset on refresh.
       </p>
     </main>
   </div>
