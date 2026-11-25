@@ -13,6 +13,7 @@ const initialCharacterClasses = [
   'Cragheart',
   'Spellweaver',
 ]
+const maxPlayerCharacters = 4
 const rosterStorageError = ref('')
 const themeStorageError = ref('')
 const selectedScenario = ref('')
@@ -50,14 +51,10 @@ const monsterClassByName = new Map(
   ]),
 )
 
-function createDefaultCharacters() {
-  return []
-}
-
 function loadCharacters() {
   try {
     const savedRoster = localStorage.getItem(rosterStorageKey)
-    if (!savedRoster) return createDefaultCharacters()
+    if (!savedRoster) return []
 
     const parsedRoster = JSON.parse(savedRoster)
     if (!Array.isArray(parsedRoster)) throw new Error('Saved roster is not an array.')
@@ -77,19 +74,23 @@ function loadCharacters() {
         name: character.name,
         detail: character.detail,
         active: true,
-        initiative: null,
-        initiativeDraft: '',
         acted: false,
       }
     })
   } catch (error) {
     rosterStorageError.value = 'Could not load the saved character roster. Changes may not persist on this device.'
-    return createDefaultCharacters()
+    return []
   }
 }
 
 const round = ref(1)
 const participants = ref(loadCharacters())
+const characterLimitReached = computed(
+  () =>
+    participants.value.filter(
+      (participant) => participant.type === 'character',
+    ).length >= maxPlayerCharacters,
+)
 const manualGroupOrders = ref({ active: null, inactive: null })
 const draggedParticipantId = ref(null)
 let nextId = Math.max(0, ...participants.value.map((participant) => participant.id)) + 1
@@ -112,27 +113,9 @@ function applyManualOrder(groupParticipants, manualOrder) {
   })
 }
 
-const initiativeOrderedParticipants = computed(() =>
-  [...participants.value].sort((a, b) => {
-    const aHasInitiative = Number.isFinite(a.initiative)
-    const bHasInitiative = Number.isFinite(b.initiative)
-
-    if (aHasInitiative && bHasInitiative) {
-      if (a.initiative !== b.initiative) return a.initiative - b.initiative
-      if (a.type !== b.type) return a.type === 'character' ? -1 : 1
-    }
-
-    if (aHasInitiative) return -1
-    if (bHasInitiative) return 1
-    return participants.value.indexOf(a) - participants.value.indexOf(b)
-  }),
-)
-
 const activeParticipants = computed(() =>
   applyManualOrder(
-    initiativeOrderedParticipants.value.filter(
-      (participant) => participantGroup(participant) === 'active',
-    ),
+    participants.value.filter((participant) => participantGroup(participant) === 'active'),
     manualGroupOrders.value.active,
   ),
 )
@@ -177,22 +160,25 @@ watch(selectedTheme, (theme) => {
   }
 })
 
-function addParticipant(type) {
+function addMonsterGroup() {
   participants.value.push({
     id: nextId++,
-    type,
+    type: 'monster',
     source: 'manual',
     name: 'New monster',
     detail: '',
     active: true,
-    initiative: null,
-    initiativeDraft: '',
     acted: false,
   })
 }
 
 function addCharacter() {
   characterClassError.value = ''
+  if (characterLimitReached.value) {
+    characterClassError.value = `A maximum of ${maxPlayerCharacters} player characters can be added.`
+    return
+  }
+
   const enteredClass = characterClassDraft.value.trim().replace(/\s+/g, ' ')
   if (!enteredClass) return
 
@@ -217,8 +203,6 @@ function addCharacter() {
     name: characterClass,
     detail: '',
     active: true,
-    initiative: null,
-    initiativeDraft: '',
     acted: false,
   })
 
@@ -243,8 +227,6 @@ function loadScenarioMonsters(scenarioName) {
       name,
       detail,
       active: false,
-      initiative: null,
-      initiativeDraft: '',
       acted: false,
     }
   })
@@ -262,40 +244,12 @@ function toggleActed(participant) {
   participant.acted = !participant.acted
 }
 
-function commitInitiative(participant) {
-  const value = participant.initiativeDraft.trim()
-  const previousInitiative = participant.initiative
-
-  if (!value) {
-    participant.initiative = null
-    return
-  }
-
-  const initiative = Number(value)
-  if (Number.isFinite(initiative) && initiative !== previousInitiative) {
-    participant.initiative = initiative
-  }
-}
-
 function startNextRound() {
   round.value += 1
   manualGroupOrders.value = { ...manualGroupOrders.value, active: null }
   participants.value.forEach((participant) => {
-    participant.initiative = null
-    participant.initiativeDraft = ''
     participant.acted = false
   })
-}
-
-function removeParticipant(id) {
-  const participant = participants.value.find((entry) => entry.id === id)
-  if (!participant || participant.type === 'character') return
-
-  participants.value = participants.value.filter((entry) => entry.id !== id)
-  manualGroupOrders.value = {
-    active: manualGroupOrders.value.active?.filter((entryId) => entryId !== id) ?? null,
-    inactive: manualGroupOrders.value.inactive?.filter((entryId) => entryId !== id) ?? null,
-  }
 }
 
 function moveParticipantToGroup(participant, group, targetParticipant = null) {
@@ -306,8 +260,6 @@ function moveParticipantToGroup(participant, group, targetParticipant = null) {
   if (previousGroup === group) return
 
   participant.active = active
-  participant.initiative = null
-  participant.initiativeDraft = ''
   participant.acted = false
 
   const nextOrders = {
@@ -368,10 +320,6 @@ function moveParticipantWithinGroup(participant, direction) {
   if (targetParticipant) reorderParticipants(participant, targetParticipant, group)
 }
 
-function canDragParticipant(participant) {
-  return participant.type === 'character' || participant.type === 'monster'
-}
-
 function isGroupDropTarget(group) {
   const draggedParticipant = participants.value.find(
     (participant) => participant.id === draggedParticipantId.value,
@@ -384,7 +332,7 @@ function isGroupDropTarget(group) {
 }
 
 function startParticipantDrag(event, participant) {
-  if (event.button !== 0 || !canDragParticipant(participant)) return
+  if (event.button !== 0) return
 
   event.preventDefault()
   draggedParticipantId.value = participant.id
@@ -417,19 +365,18 @@ function finishParticipantDrag(event) {
   draggedParticipantId.value = null
 }
 
-function cancelTieDrag() {
+function cancelParticipantDrag() {
   draggedParticipantId.value = null
 }
 
-onBeforeUnmount(cancelTieDrag)
+onBeforeUnmount(cancelParticipantDrag)
 </script>
 
 <template>
   <div class="app-shell" :data-theme="selectedTheme">
     <header class="topbar">
       <a class="brand" href="#" aria-label="Roundtracker home">
-        <span class="brand-mark" style="width: 100%; padding: 0 7px;" aria-hidden="true">Roundtracker</span>
-        <span style="text-transform: uppercase; display: none;">Roundtracker</span>
+        <span class="brand-mark">Roundtracker</span>
       </a>
       <label class="theme-picker" for="theme-select">
         <span class="theme-picker-label">Theme</span>
@@ -443,13 +390,7 @@ onBeforeUnmount(cancelTieDrag)
 
     <main class="tracker">
       <section class="round-heading" aria-labelledby="page-title">
-        <div>
-          <!-- <p class="eyebrow">CAMPAIGN TABLE</p> -->
-          <h1 id="page-title">Order of Initiative</h1>
-          <p class="intro">
-            Enter initiatives as revealed, then drag any card to set the order until the next round.
-          </p>
-        </div>
+        <h1 id="page-title">Order of Initiative</h1>
       </section>
 
       <section class="setup-accordion" aria-label="Scenario and character setup">
@@ -497,17 +438,21 @@ onBeforeUnmount(cancelTieDrag)
                 placeholder="Choose or enter a class"
                 autocomplete="off"
                 required
+                :disabled="characterLimitReached"
                 @input="characterClassError = ''"
               />
               <datalist id="character-class-options">
                 <option v-for="name in initialCharacterClasses" :key="name" :value="name" />
               </datalist>
-              <button class="add-button" type="submit">
+              <button class="add-button" type="submit" :disabled="characterLimitReached">
                 <span aria-hidden="true">＋</span> Add character
               </button>
             </div>
             <p v-if="characterClassError" class="character-class-error" role="status">
               {{ characterClassError }}
+            </p>
+            <p v-else-if="characterLimitReached" class="character-class-error" role="status">
+              Maximum of {{ maxPlayerCharacters }} player characters reached.
             </p>
           </form>
         </div>
@@ -553,7 +498,6 @@ onBeforeUnmount(cancelTieDrag)
               `is-${participant.type}`,
               {
                 'is-inactive': group.key === 'inactive',
-                'has-initiative': Number.isFinite(participant.initiative),
                 'is-acted': participant.acted,
                 'is-dragging': draggedParticipantId === participant.id,
               },
@@ -563,7 +507,6 @@ onBeforeUnmount(cancelTieDrag)
             <button
               class="order-number drag-handle"
               type="button"
-              :disabled="!canDragParticipant(participant)"
               :aria-label="
                 participant.type === 'monster'
                   ? `Drag ${participant.name} to reorder or move between groups`
@@ -572,12 +515,12 @@ onBeforeUnmount(cancelTieDrag)
               aria-keyshortcuts="ArrowUp ArrowDown"
               @pointerdown="startParticipantDrag($event, participant)"
               @pointerup="finishParticipantDrag"
-              @pointercancel="cancelTieDrag"
+              @pointercancel="cancelParticipantDrag"
               @keydown.up.prevent="moveParticipantWithinGroup(participant, -1)"
               @keydown.down.prevent="moveParticipantWithinGroup(participant, 1)"
             >
               <span>{{ String(index + 1).padStart(2, '0') }}</span>
-              <span v-if="canDragParticipant(participant)" class="drag-grip" aria-hidden="true">
+              <span class="drag-grip" aria-hidden="true">
                 ⠿
               </span>
             </button>
@@ -606,26 +549,6 @@ onBeforeUnmount(cancelTieDrag)
                 maxlength="36"
               />
             </div>
-            <label
-              v-if="participant.active"
-              class="initiative-entry"
-            >
-              <span>INITIATIVE</span>
-              <input
-                :value="participant.initiativeDraft"
-                type="number"
-                inputmode="numeric"
-                min="1"
-                max="99"
-                step="1"
-                placeholder="—"
-                :aria-label="`Initiative for ${participant.name || 'unnamed participant'}`"
-                @input="participant.initiativeDraft = $event.target.value"
-                @focus="$event.target.select()"
-                @blur="commitInitiative(participant)"
-                @keydown.enter.prevent="$event.target.blur()"
-              />
-            </label>
             <button
               v-if="participant.active"
               class="acted-button"
@@ -659,7 +582,7 @@ onBeforeUnmount(cancelTieDrag)
       </section>
 
       <section class="add-controls" aria-label="Add participants">
-        <button class="add-button" type="button" @click="addParticipant('monster')">
+        <button class="add-button" type="button" @click="addMonsterGroup">
           <span aria-hidden="true">＋</span> Add monster group
         </button>
       </section>

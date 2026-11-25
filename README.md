@@ -1,37 +1,25 @@
-# gloomhaven-initiative-manager
+# Roundtracker
 
-This template should help get you started developing with Vue 3 in Vite.
+A mobile-friendly initiative tracker for Gloomhaven scenarios, built with Vue 3 and Vite.
 
-## Recommended IDE Setup
+## Features
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+- Add up to four persistent player characters.
+- Load scenario monsters into the inactive group, then move them into active combat as revealed.
+- Drag cards to set the turn order for each round.
+- Track turns and exhausted characters.
+- Choose from six color themes.
 
-## Recommended Browser Setup
+Character names, classes, and the selected theme are saved in this browser. Monster groups and round state reset on refresh.
 
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
+## Development
 
 ```sh
 npm install
-```
-
-### Compile and Hot-Reload for Development
-
-```sh
 npm run dev
 ```
 
-### Compile and Minify for Production
+Build for production with:
 
 ```sh
 npm run build
