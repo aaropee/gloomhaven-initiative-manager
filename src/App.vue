@@ -92,6 +92,11 @@ const characterLimitReached = computed(
 )
 const manualGroupOrders = ref({ active: null, inactive: null })
 const draggedParticipantId = ref(null)
+const draggedCardGeometry = ref(null)
+const draggedCardPosition = ref(null)
+const dragOriginGroup = ref(null)
+const dragOriginOrder = ref(null)
+const draggedPointerId = ref(null)
 let nextId = Math.max(0, ...participants.value.map((participant) => participant.id)) + 1
 
 function participantGroup(participant) {
@@ -267,7 +272,12 @@ function removeCharacter(participant) {
   }
 }
 
-function moveParticipantToGroup(participant, group, targetParticipant = null) {
+function moveParticipantToGroup(
+  participant,
+  group,
+  targetParticipant = null,
+  position = 'before',
+) {
   if (!participant) return
 
   const previousGroup = participantGroup(participant)
@@ -289,7 +299,11 @@ function moveParticipantToGroup(participant, group, targetParticipant = null) {
       .filter((entry) => entry.id !== participant.id)
       .map((entry) => entry.id)
     const targetIndex = newGroupOrder.indexOf(targetParticipant.id)
-    newGroupOrder.splice(targetIndex === -1 ? newGroupOrder.length : targetIndex, 0, participant.id)
+    const insertionIndex =
+      targetIndex === -1
+        ? newGroupOrder.length
+        : targetIndex + (position === 'after' ? 1 : 0)
+    newGroupOrder.splice(insertionIndex, 0, participant.id)
     nextOrders[group] = newGroupOrder
   } else if (nextOrders[group]) {
     nextOrders[group] = [
@@ -305,7 +319,7 @@ function toggleParticipantGroup(participant) {
   moveParticipantToGroup(participant, participant.active ? 'inactive' : 'active')
 }
 
-function reorderParticipants(draggedParticipant, targetParticipant, group) {
+function reorderParticipants(draggedParticipant, targetParticipant, group, position = 'before') {
   if (
     !draggedParticipant ||
     !targetParticipant ||
@@ -319,11 +333,12 @@ function reorderParticipants(draggedParticipant, targetParticipant, group) {
   const groupOrder = (group === 'active' ? activeParticipants.value : inactiveParticipants.value)
     .map((participant) => participant.id)
   const fromIndex = groupOrder.indexOf(draggedParticipant.id)
-  const toIndex = groupOrder.indexOf(targetParticipant.id)
-  if (fromIndex === -1 || toIndex === -1) return
+  if (fromIndex === -1 || !groupOrder.includes(targetParticipant.id)) return
 
   groupOrder.splice(fromIndex, 1)
-  groupOrder.splice(toIndex, 0, draggedParticipant.id)
+  const targetIndex = groupOrder.indexOf(targetParticipant.id)
+  const insertionIndex = targetIndex + (position === 'after' ? 1 : 0)
+  groupOrder.splice(insertionIndex, 0, draggedParticipant.id)
   manualGroupOrders.value = { ...manualGroupOrders.value, [group]: groupOrder }
 }
 
@@ -332,7 +347,9 @@ function moveParticipantWithinGroup(participant, direction) {
   const groupParticipants = group === 'active' ? activeParticipants.value : inactiveParticipants.value
   const currentIndex = groupParticipants.findIndex((entry) => entry.id === participant.id)
   const targetParticipant = groupParticipants[currentIndex + direction]
-  if (targetParticipant) reorderParticipants(participant, targetParticipant, group)
+  if (targetParticipant) {
+    reorderParticipants(participant, targetParticipant, group, direction > 0 ? 'after' : 'before')
+  }
 }
 
 function isGroupDropTarget(group) {
@@ -347,15 +364,79 @@ function isGroupDropTarget(group) {
 }
 
 function startParticipantDrag(event, participant) {
-  if (event.button !== 0) return
+  if (event.button !== 0 || draggedParticipantId.value !== null) return
+
+  const card = event.currentTarget.closest('.initiative-card')
+  const rect = card?.getBoundingClientRect()
+  if (!rect) return
 
   event.preventDefault()
   draggedParticipantId.value = participant.id
-  event.currentTarget.setPointerCapture(event.pointerId)
+  draggedPointerId.value = event.pointerId
+  dragOriginGroup.value = participantGroup(participant)
+  dragOriginOrder.value = (
+    dragOriginGroup.value === 'active' ? activeParticipants.value : inactiveParticipants.value
+  ).map((entry) => entry.id)
+  draggedCardGeometry.value = {
+    width: rect.width,
+    height: rect.height,
+    grabX: event.clientX - rect.left,
+    grabY: event.clientY - rect.top,
+  }
+  draggedCardPosition.value = { x: rect.left, y: rect.top }
+  window.addEventListener('pointermove', trackParticipantDrag)
+  window.addEventListener('pointerup', finishParticipantDrag)
+  window.addEventListener('pointercancel', cancelParticipantDrag)
+}
+
+function trackParticipantDrag(event) {
+  if (draggedParticipantId.value === null || event.pointerId !== draggedPointerId.value) return
+
+  if (draggedCardGeometry.value) {
+    draggedCardPosition.value = {
+      x: event.clientX - draggedCardGeometry.value.grabX,
+      y: event.clientY - draggedCardGeometry.value.grabY,
+    }
+  }
+
+  const target = document.elementFromPoint(event.clientX, event.clientY)
+  const placeholder = target?.closest('.drag-placeholder')
+  if (
+    placeholder?.closest('[data-participant-group]')?.dataset.participantGroup ===
+    dragOriginGroup.value
+  ) {
+    return
+  }
+
+  const targetCard = target?.closest('.initiative-card')
+  const targetId = Number(targetCard?.dataset.participantId)
+  const targetParticipant = participants.value.find((participant) => participant.id === targetId)
+  const draggedParticipant = participants.value.find(
+    (participant) => participant.id === draggedParticipantId.value,
+  )
+
+  if (!draggedParticipant || !targetParticipant) {
+    return
+  }
+
+  const isValidTarget =
+    targetParticipant.id !== draggedParticipant.id &&
+    participantGroup(targetParticipant) === participantGroup(draggedParticipant)
+
+  if (isValidTarget) {
+    const rect = targetCard.getBoundingClientRect()
+    const position = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+    reorderParticipants(
+      draggedParticipant,
+      targetParticipant,
+      participantGroup(draggedParticipant),
+      position,
+    )
+  }
 }
 
 function finishParticipantDrag(event) {
-  if (draggedParticipantId.value === null) return
+  if (draggedParticipantId.value === null || event.pointerId !== draggedPointerId.value) return
 
   const draggedParticipant = participants.value.find(
     (participant) => participant.id === draggedParticipantId.value,
@@ -367,21 +448,51 @@ function finishParticipantDrag(event) {
     (participant) => participant.id === targetId,
   )
   const targetGroup = target?.closest('[data-participant-group]')?.dataset.participantGroup
+  const targetRect = targetCard?.getBoundingClientRect()
+  const position =
+    targetRect && event.clientY >= targetRect.top + targetRect.height / 2 ? 'after' : 'before'
 
   if (
     draggedParticipant?.type === 'monster' &&
     (targetGroup === 'active' || targetGroup === 'inactive') &&
     targetGroup !== (draggedParticipant.active ? 'active' : 'inactive')
   ) {
-    moveParticipantToGroup(draggedParticipant, targetGroup, targetParticipant)
-  } else {
-    reorderParticipants(draggedParticipant, targetParticipant, targetGroup)
+    moveParticipantToGroup(draggedParticipant, targetGroup, targetParticipant, position)
+  } else if (targetGroup !== dragOriginGroup.value && dragOriginGroup.value && dragOriginOrder.value) {
+    manualGroupOrders.value = {
+      ...manualGroupOrders.value,
+      [dragOriginGroup.value]: dragOriginOrder.value,
+    }
   }
-  draggedParticipantId.value = null
+  resetParticipantDrag()
 }
 
-function cancelParticipantDrag() {
+function resetParticipantDrag() {
+  window.removeEventListener('pointermove', trackParticipantDrag)
+  window.removeEventListener('pointerup', finishParticipantDrag)
+  window.removeEventListener('pointercancel', cancelParticipantDrag)
   draggedParticipantId.value = null
+  draggedPointerId.value = null
+  draggedCardGeometry.value = null
+  draggedCardPosition.value = null
+  dragOriginGroup.value = null
+  dragOriginOrder.value = null
+}
+
+function cancelParticipantDrag(event) {
+  if (
+    draggedParticipantId.value === null ||
+    (event && event.pointerId !== draggedPointerId.value)
+  ) {
+    return
+  }
+  if (dragOriginGroup.value && dragOriginOrder.value) {
+    manualGroupOrders.value = {
+      ...manualGroupOrders.value,
+      [dragOriginGroup.value]: dragOriginOrder.value,
+    }
+  }
+  resetParticipantDrag()
 }
 
 onBeforeUnmount(cancelParticipantDrag)
@@ -505,95 +616,108 @@ onBeforeUnmount(cancelParticipantDrag)
           :data-participant-group="group.key"
           :aria-label="`${group.label} participants`"
         >
-          <article
-            v-for="(participant, index) in group.participants"
-            :key="participant.id"
-            class="initiative-card"
-            :class="[
-              `is-${participant.type}`,
-              {
-                'is-inactive': group.key === 'inactive',
-                'is-acted': participant.acted,
-                'is-dragging': draggedParticipantId === participant.id,
-              },
-            ]"
-            :data-participant-id="participant.id"
-          >
-            <button
-              class="order-number drag-handle"
-              type="button"
-              :aria-label="
-                participant.type === 'monster'
-                  ? `Drag ${participant.name} to reorder or move between groups`
-                  : `Drag ${participant.name} to reorder active cards`
+          <template v-for="(participant, index) in group.participants" :key="participant.id">
+            <div
+              v-if="draggedParticipantId === participant.id"
+              class="drag-placeholder"
+              :style="{ height: `${draggedCardGeometry.height}px` }"
+              aria-hidden="true"
+            />
+            <article
+              class="initiative-card"
+              :class="[
+                `is-${participant.type}`,
+                {
+                  'is-inactive': group.key === 'inactive',
+                  'is-acted': participant.acted,
+                  'is-dragging': draggedParticipantId === participant.id,
+                },
+              ]"
+              :style="
+                draggedParticipantId === participant.id
+                  ? {
+                      left: `${draggedCardPosition.x}px`,
+                      top: `${draggedCardPosition.y}px`,
+                      width: `${draggedCardGeometry.width}px`,
+                      height: `${draggedCardGeometry.height}px`,
+                      transform: 'scale(1.02)',
+                    }
+                  : undefined
               "
-              aria-keyshortcuts="ArrowUp ArrowDown"
-              @pointerdown="startParticipantDrag($event, participant)"
-              @pointerup="finishParticipantDrag"
-              @pointercancel="cancelParticipantDrag"
-              @keydown.up.prevent="moveParticipantWithinGroup(participant, -1)"
-              @keydown.down.prevent="moveParticipantWithinGroup(participant, 1)"
+              :data-participant-id="participant.id"
             >
-              <span>{{ String(index + 1).padStart(2, '0') }}</span>
-              <span class="drag-grip" aria-hidden="true">
-                ⠿
-              </span>
-            </button>
-            <div class="participant-info">
-              <input
-                v-model="participant.name"
-                class="name-input"
-                :aria-label="`${participant.type === 'character' ? 'Character' : 'Monster group'} name`"
-                maxlength="36"
-                @focus="$event.target.select()"
-              />
-              <input
-                v-if="participant.type === 'character'"
-                v-model="participant.detail"
-                class="detail-input"
-                aria-label="Character class or notes"
-                placeholder="Class / notes"
-                maxlength="36"
-              />
-              <input
-                v-else
-                v-model="participant.detail"
-                class="detail-input"
-                aria-label="Monster group notes"
-                placeholder="Optional notes"
-                maxlength="36"
-              />
-            </div>
-            <button
-              v-if="participant.active"
-              class="acted-button"
-              :class="{ 'is-marked': participant.acted }"
-              type="button"
-              :aria-pressed="participant.acted"
-              :aria-label="participant.acted ? `Mark ${participant.name} as not acted` : `Mark ${participant.name} as acted`"
-              @click="toggleActed(participant)"
-            >
-              <span class="acted-check" aria-hidden="true">{{ participant.acted ? '✓' : '' }}</span>
-              <span>{{ participant.acted ? 'Done' : 'End turn' }}</span>
-            </button>
-            <button
-              v-else-if="participant.type === 'character'"
-              class="remove-character-button"
-              type="button"
-              :aria-label="`Remove ${participant.name} from the saved character roster`"
-              @click="removeCharacter(participant)"
-            >
-              Remove character
-            </button>
-            <button
-              class="group-toggle-button"
-              type="button"
-              :aria-label="`Move ${participant.name} to ${participant.active ? 'inactive' : 'active'}`"
-              @click="toggleParticipantGroup(participant)"
-            >
-              <span aria-hidden="true">{{ participant.active ? '↓' : '↑' }}</span>
-            </button>
-          </article>
+              <button
+                class="order-number drag-handle"
+                type="button"
+                :aria-label="
+                  participant.type === 'monster'
+                    ? `Drag ${participant.name} to reorder or move between groups`
+                    : `Drag ${participant.name} to reorder active cards`
+                "
+                aria-keyshortcuts="ArrowUp ArrowDown"
+                @pointerdown="startParticipantDrag($event, participant)"
+                @keydown.up.prevent="moveParticipantWithinGroup(participant, -1)"
+                @keydown.down.prevent="moveParticipantWithinGroup(participant, 1)"
+              >
+                <span>{{ String(index + 1).padStart(2, '0') }}</span>
+                <span class="drag-grip" aria-hidden="true">⠿</span>
+              </button>
+              <div class="participant-info">
+                <input
+                  v-model="participant.name"
+                  class="name-input"
+                  :aria-label="`${participant.type === 'character' ? 'Character' : 'Monster group'} name`"
+                  maxlength="36"
+                  @focus="$event.target.select()"
+                />
+                <input
+                  v-if="participant.type === 'character'"
+                  v-model="participant.detail"
+                  class="detail-input"
+                  aria-label="Character class or notes"
+                  placeholder="Class / notes"
+                  maxlength="36"
+                />
+                <input
+                  v-else
+                  v-model="participant.detail"
+                  class="detail-input"
+                  aria-label="Monster group notes"
+                  placeholder="Optional notes"
+                  maxlength="36"
+                />
+              </div>
+              <button
+                v-if="participant.active"
+                class="acted-button"
+                :class="{ 'is-marked': participant.acted }"
+                type="button"
+                :aria-pressed="participant.acted"
+                :aria-label="participant.acted ? `Mark ${participant.name} as not acted` : `Mark ${participant.name} as acted`"
+                @click="toggleActed(participant)"
+              >
+                <span class="acted-check" aria-hidden="true">{{ participant.acted ? '✓' : '' }}</span>
+                <span>{{ participant.acted ? 'Done' : 'End turn' }}</span>
+              </button>
+              <button
+                v-else-if="participant.type === 'character'"
+                class="remove-character-button"
+                type="button"
+                :aria-label="`Remove ${participant.name} from the saved character roster`"
+                @click="removeCharacter(participant)"
+              >
+                Remove character
+              </button>
+              <button
+                class="group-toggle-button"
+                type="button"
+                :aria-label="`Move ${participant.name} to ${participant.active ? 'inactive' : 'active'}`"
+                @click="toggleParticipantGroup(participant)"
+              >
+                <span aria-hidden="true">{{ participant.active ? '↓' : '↑' }}</span>
+              </button>
+            </article>
+          </template>
 
           <div v-if="!group.participants.length" class="group-empty-state">
             {{
