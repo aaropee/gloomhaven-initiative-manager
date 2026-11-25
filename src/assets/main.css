@@ -562,6 +562,10 @@ button {
   background: var(--color-surface);
 }
 
+.initiative-card.is-character.is-inactive {
+  grid-template-columns: 44px minmax(0, 1fr) 88px 28px;
+}
+
 .initiative-card.is-acted {
   border-top-color: var(--color-primary-border);
   border-right-color: var(--color-primary-border);
@@ -687,6 +691,26 @@ button {
   border-color: var(--color-primary-border);
   background: var(--color-primary-soft);
   color: var(--color-primary);
+}
+
+.remove-character-button {
+  width: 100%;
+  min-height: 36px;
+  padding: 4px 5px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 7px;
+  background: var(--color-surface);
+  color: var(--color-accent-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.1;
+  text-align: center;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.remove-character-button:hover {
+  border-color: var(--color-accent-secondary);
+  background: var(--color-surface-muted);
 }
 
 .acted-check {
@@ -854,6 +878,10 @@ select:focus-visible {
 
   .initiative-card.is-inactive {
     grid-template-columns: 44px minmax(0, 1fr) 24px;
+  }
+
+  .initiative-card.is-character.is-inactive {
+    grid-template-columns: 44px minmax(0, 1fr) 68px 24px;
   }
 
   .order-number {

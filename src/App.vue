@@ -253,6 +253,22 @@ function startNextRound() {
   })
 }
 
+function removeCharacter(participant) {
+  if (participant.type !== 'character' || participant.active) return
+
+  const characterName = participant.name || 'this character'
+  const confirmed = window.confirm(
+    `Remove ${characterName} from your saved character roster on this device? This cannot be undone.`,
+  )
+  if (!confirmed) return
+
+  participants.value = participants.value.filter((entry) => entry.id !== participant.id)
+  manualGroupOrders.value = {
+    active: manualGroupOrders.value.active?.filter((id) => id !== participant.id) ?? null,
+    inactive: manualGroupOrders.value.inactive?.filter((id) => id !== participant.id) ?? null,
+  }
+}
+
 function moveParticipantToGroup(participant, group, targetParticipant = null) {
   if (!participant) return
 
@@ -561,6 +577,15 @@ onBeforeUnmount(cancelParticipantDrag)
             >
               <span class="acted-check" aria-hidden="true">{{ participant.acted ? '✓' : '' }}</span>
               <span>{{ participant.acted ? 'Done' : 'End turn' }}</span>
+            </button>
+            <button
+              v-else-if="participant.type === 'character'"
+              class="remove-character-button"
+              type="button"
+              :aria-label="`Remove ${participant.name} from the saved character roster`"
+              @click="removeCharacter(participant)"
+            >
+              Remove character
             </button>
             <button
               class="group-toggle-button"
