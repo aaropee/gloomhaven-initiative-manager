@@ -1,13 +1,24 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import monsterClasses from './assets/monster-classes.json'
 import scenarios from './assets/scenarios.json'
 
 const rosterStorageKey = 'roundtracker.character-roster'
 const themeStorageKey = 'roundtracker.color-theme'
+const initialCharacterClasses = [
+  'Scoundrel',
+  'Brute',
+  'Tinkerer',
+  'Mindthief',
+  'Cragheart',
+  'Spellweaver',
+]
 const rosterStorageError = ref('')
 const themeStorageError = ref('')
 const selectedScenario = ref('')
+const setupExpanded = ref(true)
+const characterClassDraft = ref('')
+const characterClassError = ref('')
 const themes = [
   { value: 'default', label: 'Default' },
   { value: 'elegant', label: 'Elegant' },
@@ -40,15 +51,7 @@ const monsterClassByName = new Map(
 )
 
 function createDefaultCharacters() {
-  return Array.from({ length: 4 }, (_, index) => ({
-    id: index + 1,
-    type: 'character',
-    name: `Character ${index + 1}`,
-    detail: '',
-    initiative: null,
-    initiativeDraft: '',
-    acted: false,
-  }))
+  return []
 }
 
 function loadCharacters() {
@@ -73,6 +76,7 @@ function loadCharacters() {
         type: 'character',
         name: character.name,
         detail: character.detail,
+        active: true,
         initiative: null,
         initiativeDraft: '',
         acted: false,
@@ -86,23 +90,64 @@ function loadCharacters() {
 
 const round = ref(1)
 const participants = ref(loadCharacters())
+const manualGroupOrders = ref({ active: null, inactive: null })
+const draggedParticipantId = ref(null)
 let nextId = Math.max(0, ...participants.value.map((participant) => participant.id)) + 1
 
-const orderedParticipants = computed(() =>
+function participantGroup(participant) {
+  return participant.active ? 'active' : 'inactive'
+}
+
+function applyManualOrder(groupParticipants, manualOrder) {
+  if (!manualOrder) return groupParticipants
+
+  const orderIndex = new Map(manualOrder.map((id, index) => [id, index]))
+  return [...groupParticipants].sort((a, b) => {
+    const aIndex = orderIndex.get(a.id)
+    const bIndex = orderIndex.get(b.id)
+    if (aIndex === undefined && bIndex === undefined) return 0
+    if (aIndex === undefined) return 1
+    if (bIndex === undefined) return -1
+    return aIndex - bIndex
+  })
+}
+
+const initiativeOrderedParticipants = computed(() =>
   [...participants.value].sort((a, b) => {
     const aHasInitiative = Number.isFinite(a.initiative)
     const bHasInitiative = Number.isFinite(b.initiative)
 
-    if (aHasInitiative && bHasInitiative) return a.initiative - b.initiative
+    if (aHasInitiative && bHasInitiative) {
+      if (a.initiative !== b.initiative) return a.initiative - b.initiative
+      if (a.type !== b.type) return a.type === 'character' ? -1 : 1
+    }
+
     if (aHasInitiative) return -1
     if (bHasInitiative) return 1
     return participants.value.indexOf(a) - participants.value.indexOf(b)
   }),
 )
 
-const assignedCount = computed(
-  () => participants.value.filter((participant) => Number.isFinite(participant.initiative)).length,
+const activeParticipants = computed(() =>
+  applyManualOrder(
+    initiativeOrderedParticipants.value.filter(
+      (participant) => participantGroup(participant) === 'active',
+    ),
+    manualGroupOrders.value.active,
+  ),
 )
+const inactiveParticipants = computed(() =>
+  applyManualOrder(
+    participants.value.filter(
+      (participant) => participantGroup(participant) === 'inactive',
+    ),
+    manualGroupOrders.value.inactive,
+  ),
+)
+const participantGroups = computed(() => [
+  { key: 'active', label: 'Active', participants: activeParticipants.value },
+  { key: 'inactive', label: 'Inactive', participants: inactiveParticipants.value },
+])
 
 const savedCharacters = computed(() =>
   participants.value
@@ -133,17 +178,51 @@ watch(selectedTheme, (theme) => {
 })
 
 function addParticipant(type) {
-  const isCharacter = type === 'character'
   participants.value.push({
     id: nextId++,
     type,
     source: 'manual',
-    name: isCharacter ? 'New character' : 'New monster',
+    name: 'New monster',
     detail: '',
+    active: true,
     initiative: null,
     initiativeDraft: '',
     acted: false,
   })
+}
+
+function addCharacter() {
+  characterClassError.value = ''
+  const enteredClass = characterClassDraft.value.trim().replace(/\s+/g, ' ')
+  if (!enteredClass) return
+
+  const characterClass =
+    initialCharacterClasses.find((name) => name.toLowerCase() === enteredClass.toLowerCase()) ||
+    enteredClass
+  const alreadyAdded = participants.value.some(
+    (participant) =>
+      participant.type === 'character' &&
+      participant.name.trim().toLowerCase() === characterClass.toLowerCase(),
+  )
+
+  if (alreadyAdded) {
+    characterClassError.value = `${characterClass} is already in the character roster.`
+    return
+  }
+
+  participants.value.push({
+    id: nextId++,
+    type: 'character',
+    source: 'manual',
+    name: characterClass,
+    detail: '',
+    active: true,
+    initiative: null,
+    initiativeDraft: '',
+    acted: false,
+  })
+
+  characterClassDraft.value = ''
 }
 
 function loadScenarioMonsters(scenarioName) {
@@ -163,6 +242,7 @@ function loadScenarioMonsters(scenarioName) {
       source: 'scenario',
       name,
       detail,
+      active: false,
       initiative: null,
       initiativeDraft: '',
       acted: false,
@@ -184,6 +264,7 @@ function toggleActed(participant) {
 
 function commitInitiative(participant) {
   const value = participant.initiativeDraft.trim()
+  const previousInitiative = participant.initiative
 
   if (!value) {
     participant.initiative = null
@@ -191,11 +272,14 @@ function commitInitiative(participant) {
   }
 
   const initiative = Number(value)
-  if (Number.isFinite(initiative)) participant.initiative = initiative
+  if (Number.isFinite(initiative) && initiative !== previousInitiative) {
+    participant.initiative = initiative
+  }
 }
 
 function startNextRound() {
   round.value += 1
+  manualGroupOrders.value = { ...manualGroupOrders.value, active: null }
   participants.value.forEach((participant) => {
     participant.initiative = null
     participant.initiativeDraft = ''
@@ -203,23 +287,148 @@ function startNextRound() {
   })
 }
 
-function clearInitiatives() {
-  participants.value.forEach((participant) => {
-    participant.initiative = null
-    participant.initiativeDraft = ''
-  })
+function removeParticipant(id) {
+  const participant = participants.value.find((entry) => entry.id === id)
+  if (!participant || participant.type === 'character') return
+
+  participants.value = participants.value.filter((entry) => entry.id !== id)
+  manualGroupOrders.value = {
+    active: manualGroupOrders.value.active?.filter((entryId) => entryId !== id) ?? null,
+    inactive: manualGroupOrders.value.inactive?.filter((entryId) => entryId !== id) ?? null,
+  }
 }
 
-function removeParticipant(id) {
-  participants.value = participants.value.filter((participant) => participant.id !== id)
+function moveParticipantToGroup(participant, group, targetParticipant = null) {
+  if (!participant) return
+
+  const previousGroup = participantGroup(participant)
+  const active = group === 'active'
+  if (previousGroup === group) return
+
+  participant.active = active
+  participant.initiative = null
+  participant.initiativeDraft = ''
+  participant.acted = false
+
+  const nextOrders = {
+    ...manualGroupOrders.value,
+    [previousGroup]: manualGroupOrders.value[previousGroup]?.filter(
+      (id) => id !== participant.id,
+    ) ?? null,
+  }
+
+  if (targetParticipant && participantGroup(targetParticipant) === group) {
+    const newGroupOrder = (group === 'active' ? activeParticipants.value : inactiveParticipants.value)
+      .filter((entry) => entry.id !== participant.id)
+      .map((entry) => entry.id)
+    const targetIndex = newGroupOrder.indexOf(targetParticipant.id)
+    newGroupOrder.splice(targetIndex === -1 ? newGroupOrder.length : targetIndex, 0, participant.id)
+    nextOrders[group] = newGroupOrder
+  } else if (nextOrders[group]) {
+    nextOrders[group] = [
+      ...nextOrders[group].filter((id) => id !== participant.id),
+      participant.id,
+    ]
+  }
+
+  manualGroupOrders.value = nextOrders
 }
+
+function toggleParticipantGroup(participant) {
+  moveParticipantToGroup(participant, participant.active ? 'inactive' : 'active')
+}
+
+function reorderParticipants(draggedParticipant, targetParticipant, group) {
+  if (
+    !draggedParticipant ||
+    !targetParticipant ||
+    targetParticipant.id === draggedParticipant.id ||
+    participantGroup(draggedParticipant) !== group ||
+    participantGroup(targetParticipant) !== group
+  ) {
+    return
+  }
+
+  const groupOrder = (group === 'active' ? activeParticipants.value : inactiveParticipants.value)
+    .map((participant) => participant.id)
+  const fromIndex = groupOrder.indexOf(draggedParticipant.id)
+  const toIndex = groupOrder.indexOf(targetParticipant.id)
+  if (fromIndex === -1 || toIndex === -1) return
+
+  groupOrder.splice(fromIndex, 1)
+  groupOrder.splice(toIndex, 0, draggedParticipant.id)
+  manualGroupOrders.value = { ...manualGroupOrders.value, [group]: groupOrder }
+}
+
+function moveParticipantWithinGroup(participant, direction) {
+  const group = participantGroup(participant)
+  const groupParticipants = group === 'active' ? activeParticipants.value : inactiveParticipants.value
+  const currentIndex = groupParticipants.findIndex((entry) => entry.id === participant.id)
+  const targetParticipant = groupParticipants[currentIndex + direction]
+  if (targetParticipant) reorderParticipants(participant, targetParticipant, group)
+}
+
+function canDragParticipant(participant) {
+  return participant.type === 'character' || participant.type === 'monster'
+}
+
+function isGroupDropTarget(group) {
+  const draggedParticipant = participants.value.find(
+    (participant) => participant.id === draggedParticipantId.value,
+  )
+
+  return (
+    draggedParticipant?.type === 'monster' &&
+    (group === 'active' ? !draggedParticipant.active : draggedParticipant.active)
+  )
+}
+
+function startParticipantDrag(event, participant) {
+  if (event.button !== 0 || !canDragParticipant(participant)) return
+
+  event.preventDefault()
+  draggedParticipantId.value = participant.id
+  event.currentTarget.setPointerCapture(event.pointerId)
+}
+
+function finishParticipantDrag(event) {
+  if (draggedParticipantId.value === null) return
+
+  const draggedParticipant = participants.value.find(
+    (participant) => participant.id === draggedParticipantId.value,
+  )
+  const target = document.elementFromPoint(event.clientX, event.clientY)
+  const targetCard = target?.closest('.initiative-card')
+  const targetId = Number(targetCard?.dataset.participantId)
+  const targetParticipant = participants.value.find(
+    (participant) => participant.id === targetId,
+  )
+  const targetGroup = target?.closest('[data-participant-group]')?.dataset.participantGroup
+
+  if (
+    draggedParticipant?.type === 'monster' &&
+    (targetGroup === 'active' || targetGroup === 'inactive') &&
+    targetGroup !== (draggedParticipant.active ? 'active' : 'inactive')
+  ) {
+    moveParticipantToGroup(draggedParticipant, targetGroup, targetParticipant)
+  } else {
+    reorderParticipants(draggedParticipant, targetParticipant, targetGroup)
+  }
+  draggedParticipantId.value = null
+}
+
+function cancelTieDrag() {
+  draggedParticipantId.value = null
+}
+
+onBeforeUnmount(cancelTieDrag)
 </script>
 
 <template>
   <div class="app-shell" :data-theme="selectedTheme">
     <header class="topbar">
       <a class="brand" href="#" aria-label="Roundtracker home">
-        <span class="brand-mark" style="width: 100%; padding: 0 7px;" aria-hidden="true">Gloomhaven</span>
+        <span class="brand-mark" style="width: 100%; padding: 0 7px;" aria-hidden="true">Roundtracker</span>
         <span style="text-transform: uppercase; display: none;">Roundtracker</span>
       </a>
       <label class="theme-picker" for="theme-select">
@@ -237,44 +446,83 @@ function removeParticipant(id) {
         <div>
           <!-- <p class="eyebrow">CAMPAIGN TABLE</p> -->
           <h1 id="page-title">Order of Initiative</h1>
-          <p class="intro">Enter each initiative as it’s revealed. The order updates automatically.</p>
-        </div>
-        <div class="round-token" aria-label="Current round">
-          <span class="round-token-label">ROUND</span>
-          <span class="round-number">{{ String(round).padStart(2, '0') }}</span>
+          <p class="intro">
+            Enter initiatives as revealed, then drag any card to set the order until the next round.
+          </p>
         </div>
       </section>
 
-      <section class="round-controls" aria-label="Scenario and round controls">
-        <div class="scenario-picker">
-          <label for="scenario-select">Scenario</label>
-          <select
-            id="scenario-select"
-            v-model="selectedScenario"
-            aria-label="Choose a scenario"
-            @change="loadScenarioMonsters($event.target.value)"
-          >
-            <option value="" disabled>Select a scenario</option>
-            <option v-for="scenario in scenarios" :key="scenario.name" :value="scenario.name">
-              {{ scenario.name }}
-            </option>
-          </select>
-          <p class="scenario-help">
-            Changing scenarios replaces their generated monsters, while keeping characters and manually added monsters.
-          </p>
+      <section class="setup-accordion" aria-label="Scenario and character setup">
+        <button
+          id="setup-accordion-toggle"
+          class="setup-accordion-toggle"
+          type="button"
+          aria-controls="setup-accordion-content"
+          :aria-expanded="setupExpanded"
+          @click="setupExpanded = !setupExpanded"
+        >
+          <span>Scenario and characters</span>
+          <span class="setup-toggle-label">{{ setupExpanded ? 'Hide setup' : 'Edit setup' }}</span>
+          <span class="setup-toggle-icon" aria-hidden="true">{{ setupExpanded ? '−' : '+' }}</span>
+        </button>
+        <div
+          v-show="setupExpanded"
+          id="setup-accordion-content"
+          class="setup-accordion-content"
+          aria-labelledby="setup-accordion-toggle"
+        >
+          <div class="scenario-picker">
+            <label for="scenario-select">Scenario</label>
+            <select
+              id="scenario-select"
+              v-model="selectedScenario"
+              aria-label="Choose a scenario"
+              @change="loadScenarioMonsters($event.target.value)"
+            >
+              <option value="" disabled>Select a scenario</option>
+              <option v-for="scenario in scenarios" :key="scenario.name" :value="scenario.name">
+                {{ scenario.name }}
+              </option>
+            </select>
+          </div>
+          <form class="character-picker" @submit.prevent="addCharacter">
+            <label for="character-class">Player character class</label>
+            <div class="character-picker-input">
+              <input
+                id="character-class"
+                v-model="characterClassDraft"
+                type="text"
+                list="character-class-options"
+                maxlength="36"
+                placeholder="Choose or enter a class"
+                autocomplete="off"
+                required
+                @input="characterClassError = ''"
+              />
+              <datalist id="character-class-options">
+                <option v-for="name in initialCharacterClasses" :key="name" :value="name" />
+              </datalist>
+              <button class="add-button" type="submit">
+                <span aria-hidden="true">＋</span> Add character
+              </button>
+            </div>
+            <p v-if="characterClassError" class="character-class-error" role="status">
+              {{ characterClassError }}
+            </p>
+          </form>
         </div>
-        <div class="progress-label">
-          <span>{{ assignedCount }} <span class="muted">/ {{ participants.length }} initiatives</span></span>
-          <span v-if="assignedCount === participants.length && participants.length" class="ready-label">
-            Order ready
-          </span>
-          <span v-else class="muted">Lowest initiative goes first</span>
+      </section>
+
+      <section class="scenario-summary-row" aria-label="Current scenario and round">
+        <div v-if="selectedScenario" class="scenario-summary">
+          <span>SCENARIO</span>
+          <strong>{{ selectedScenario }}</strong>
         </div>
-        <div class="progress-track" aria-hidden="true">
-          <span :style="{ width: `${participants.length ? (assignedCount / participants.length) * 100 : 0}%` }"></span>
-        </div>
-        <div class="control-actions">
-          <button class="text-button" type="button" @click="clearInitiatives">Clear values</button>
+        <div class="scenario-summary-actions">
+          <div class="round-token" aria-label="Current round">
+            <span class="round-token-label">ROUND</span>
+            <span class="round-number">{{ String(round).padStart(2, '0') }}</span>
+          </div>
           <button class="next-round-button" type="button" @click="startNextRound">
             <span>New round</span>
             <span aria-hidden="true">↗</span>
@@ -282,95 +530,135 @@ function removeParticipant(id) {
         </div>
       </section>
 
-      <section class="initiative-list" aria-label="Initiative cards">
-        <article
-          v-for="(participant, index) in orderedParticipants"
-          :key="participant.id"
-          class="initiative-card"
-          :class="[
-            `is-${participant.type}`,
-            {
-              'has-initiative': Number.isFinite(participant.initiative),
-              'is-acted': participant.acted,
-            },
-          ]"
+      <section
+        v-for="group in participantGroups"
+        :key="group.key"
+        class="participant-group"
+        :class="[`is-${group.key}-group`, { 'is-drop-target': isGroupDropTarget(group.key) }]"
+      >
+        <header class="participant-group-heading">
+          <h2>{{ group.label }}</h2>
+          <span>{{ group.participants.length }}</span>
+        </header>
+        <div
+          class="initiative-list"
+          :data-participant-group="group.key"
+          :aria-label="`${group.label} participants`"
         >
-          <div class="order-number" aria-hidden="true">{{ String(index + 1).padStart(2, '0') }}</div>
-          <div class="participant-info">
-            <span class="type-label">{{ participant.type === 'character' ? 'PLAYER CHARACTER' : 'MONSTER GROUP' }}</span>
-            <input
-              v-model="participant.name"
-              class="name-input"
-              :aria-label="`${participant.type === 'character' ? 'Character' : 'Monster group'} name`"
-              maxlength="36"
-              @focus="$event.target.select()"
-            />
-            <input
-              v-if="participant.type === 'character'"
-              v-model="participant.detail"
-              class="detail-input"
-              aria-label="Character class or notes"
-              placeholder="Class / notes"
-              maxlength="36"
-            />
-            <input
-              v-else
-              v-model="participant.detail"
-              class="detail-input"
-              aria-label="Monster group notes"
-              placeholder="Optional notes"
-              maxlength="36"
-            />
-          </div>
-          <label class="initiative-entry">
-            <span>INITIATIVE</span>
-            <input
-              :value="participant.initiativeDraft"
-              type="number"
-              inputmode="numeric"
-              min="1"
-              max="99"
-              step="1"
-              placeholder="—"
-              :aria-label="`Initiative for ${participant.name || 'unnamed participant'}`"
-              @input="participant.initiativeDraft = $event.target.value"
-              @focus="$event.target.select()"
-              @blur="commitInitiative(participant)"
-              @keydown.enter.prevent="$event.target.blur()"
-            />
-          </label>
-          <button
-            class="acted-button"
-            :class="{ 'is-marked': participant.acted }"
-            type="button"
-            :aria-pressed="participant.acted"
-            :aria-label="participant.acted ? `Mark ${participant.name} as not acted` : `Mark ${participant.name} as acted`"
-            @click="toggleActed(participant)"
+          <article
+            v-for="(participant, index) in group.participants"
+            :key="participant.id"
+            class="initiative-card"
+            :class="[
+              `is-${participant.type}`,
+              {
+                'is-inactive': group.key === 'inactive',
+                'has-initiative': Number.isFinite(participant.initiative),
+                'is-acted': participant.acted,
+                'is-dragging': draggedParticipantId === participant.id,
+              },
+            ]"
+            :data-participant-id="participant.id"
           >
-            <span class="acted-check" aria-hidden="true">{{ participant.acted ? '✓' : '' }}</span>
-            <span>{{ participant.acted ? 'Done' : 'End turn' }}</span>
-          </button>
-          <button
-            class="remove-button"
-            type="button"
-            :aria-label="`Remove ${participant.name || 'participant'}`"
-            @click="removeParticipant(participant.id)"
-          >
-            <span aria-hidden="true">×</span>
-          </button>
-        </article>
+            <button
+              class="order-number drag-handle"
+              type="button"
+              :disabled="!canDragParticipant(participant)"
+              :aria-label="
+                participant.type === 'monster'
+                  ? `Drag ${participant.name} to reorder or move between groups`
+                  : `Drag ${participant.name} to reorder active cards`
+              "
+              aria-keyshortcuts="ArrowUp ArrowDown"
+              @pointerdown="startParticipantDrag($event, participant)"
+              @pointerup="finishParticipantDrag"
+              @pointercancel="cancelTieDrag"
+              @keydown.up.prevent="moveParticipantWithinGroup(participant, -1)"
+              @keydown.down.prevent="moveParticipantWithinGroup(participant, 1)"
+            >
+              <span>{{ String(index + 1).padStart(2, '0') }}</span>
+              <span v-if="canDragParticipant(participant)" class="drag-grip" aria-hidden="true">
+                ⠿
+              </span>
+            </button>
+            <div class="participant-info">
+              <input
+                v-model="participant.name"
+                class="name-input"
+                :aria-label="`${participant.type === 'character' ? 'Character' : 'Monster group'} name`"
+                maxlength="36"
+                @focus="$event.target.select()"
+              />
+              <input
+                v-if="participant.type === 'character'"
+                v-model="participant.detail"
+                class="detail-input"
+                aria-label="Character class or notes"
+                placeholder="Class / notes"
+                maxlength="36"
+              />
+              <input
+                v-else
+                v-model="participant.detail"
+                class="detail-input"
+                aria-label="Monster group notes"
+                placeholder="Optional notes"
+                maxlength="36"
+              />
+            </div>
+            <label
+              v-if="participant.active"
+              class="initiative-entry"
+            >
+              <span>INITIATIVE</span>
+              <input
+                :value="participant.initiativeDraft"
+                type="number"
+                inputmode="numeric"
+                min="1"
+                max="99"
+                step="1"
+                placeholder="—"
+                :aria-label="`Initiative for ${participant.name || 'unnamed participant'}`"
+                @input="participant.initiativeDraft = $event.target.value"
+                @focus="$event.target.select()"
+                @blur="commitInitiative(participant)"
+                @keydown.enter.prevent="$event.target.blur()"
+              />
+            </label>
+            <button
+              v-if="participant.active"
+              class="acted-button"
+              :class="{ 'is-marked': participant.acted }"
+              type="button"
+              :aria-pressed="participant.acted"
+              :aria-label="participant.acted ? `Mark ${participant.name} as not acted` : `Mark ${participant.name} as acted`"
+              @click="toggleActed(participant)"
+            >
+              <span class="acted-check" aria-hidden="true">{{ participant.acted ? '✓' : '' }}</span>
+              <span>{{ participant.acted ? 'Done' : 'End turn' }}</span>
+            </button>
+            <button
+              class="group-toggle-button"
+              type="button"
+              :aria-label="`Move ${participant.name} to ${participant.active ? 'inactive' : 'active'}`"
+              @click="toggleParticipantGroup(participant)"
+            >
+              <span aria-hidden="true">{{ participant.active ? '↓' : '↑' }}</span>
+            </button>
+          </article>
 
-        <div v-if="!participants.length" class="empty-state">
-          <span class="empty-icon" aria-hidden="true">＋</span>
-          <h2>Your initiative row is empty</h2>
-          <p>Add player characters and monster groups to get started.</p>
+          <div v-if="!group.participants.length" class="group-empty-state">
+            {{
+              group.key === 'active'
+                ? 'Drag revealed monsters here to add them to active combat.'
+                : 'Scenario monsters will appear here until they are revealed.'
+            }}
+          </div>
         </div>
       </section>
 
       <section class="add-controls" aria-label="Add participants">
-        <button class="add-button" type="button" @click="addParticipant('character')">
-          <span aria-hidden="true">＋</span> Add character
-        </button>
         <button class="add-button" type="button" @click="addParticipant('monster')">
           <span aria-hidden="true">＋</span> Add monster group
         </button>
