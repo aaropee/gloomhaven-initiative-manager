@@ -4,6 +4,30 @@
   min-height: 100vh;
 }
 
+.app-shell[data-theme='dark'] {
+  color-scheme: dark;
+  --color-background: #171915;
+  --color-surface: #22251f;
+  --color-surface-raised: #2a2e26;
+  --color-surface-muted: #363b30;
+  --color-header: #1e221d;
+  --color-text: #f1e8d0;
+  --color-text-secondary: #c7bea8;
+  --color-text-subtle: #b6ad98;
+  --color-border: #71674e;
+  --color-border-soft: #45493d;
+  --color-primary: #a4ba79;
+  --color-primary-hover: #b8cb8e;
+  --color-primary-soft: #343d2c;
+  --color-primary-border: #68794e;
+  --color-accent: #d3a05b;
+  --color-accent-secondary: #e08a70;
+  --color-copy-accent: #eee2c5;
+  --color-focus: #e3bc75;
+  --color-ambient-glow: rgba(211, 160, 91, 0.12);
+  --color-shadow: rgba(0, 0, 0, 0.32);
+}
+
 .app-shell[data-theme='spring'] {
   --color-background: #e1c698;
   --color-surface: #f5ebd7;

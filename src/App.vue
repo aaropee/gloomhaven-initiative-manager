@@ -27,6 +27,7 @@ const themes = [
   { value: 'harvest', label: 'Harvest' },
   { value: 'fall', label: 'Fall' },
   { value: 'frost', label: 'Frost' },
+  { value: 'dark', label: 'Dark' },
 ]
 const storageError = computed(() =>
   [rosterStorageError.value, themeStorageError.value].filter(Boolean).join(' '),
