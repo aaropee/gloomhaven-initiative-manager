@@ -22,9 +22,7 @@ const characterClassDraft = ref('')
 const characterClassError = ref('')
 const themes = [
   { value: 'default', label: 'Default' },
-  { value: 'elegant', label: 'Elegant' },
   { value: 'spring', label: 'Spring' },
-  { value: 'harvest', label: 'Harvest' },
   { value: 'fall', label: 'Fall' },
   { value: 'frost', label: 'Frost' },
   { value: 'dark', label: 'Dark' },

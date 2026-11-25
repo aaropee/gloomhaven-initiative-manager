@@ -51,29 +51,6 @@
   --color-shadow: rgba(47, 75, 58, 0.12);
 }
 
-.app-shell[data-theme='elegant'] {
-  --color-background: #eae4d2;
-  --color-surface: #f5f0e5;
-  --color-surface-raised: #fffaf0;
-  --color-surface-muted: #ded5c7;
-  --color-header: #f7f3e9;
-  --color-text: #3c2a30;
-  --color-text-secondary: #5d4c4b;
-  --color-text-subtle: #5d4c4b;
-  --color-border: #c5b6a6;
-  --color-border-soft: #d5c8b9;
-  --color-primary: #3c2a30;
-  --color-primary-hover: #2d2025;
-  --color-primary-soft: #ede6e4;
-  --color-primary-border: #c5b6a6;
-  --color-accent: #79676c;
-  --color-accent-secondary: #5d4c4b;
-  --color-copy-accent: #5d4c4b;
-  --color-focus: #3c2a30;
-  --color-ambient-glow: rgba(121, 103, 108, 0.12);
-  --color-shadow: rgba(60, 42, 48, 0.12);
-}
-
 .app-shell[data-theme='fall'] {
   --color-background: #eecb96;
   --color-surface: #f8e6ca;
@@ -95,29 +72,6 @@
   --color-focus: #a82924;
   --color-ambient-glow: rgba(191, 90, 54, 0.14);
   --color-shadow: rgba(94, 41, 31, 0.12);
-}
-
-.app-shell[data-theme='harvest'] {
-  --color-background: #fff1ae;
-  --color-surface: #fff1ae;
-  --color-surface-raised: #fff9dc;
-  --color-surface-muted: #ffd666;
-  --color-header: #ffe78c;
-  --color-text: #3b2a00;
-  --color-text-secondary: #584000;
-  --color-text-subtle: #634900;
-  --color-border: #feab3e;
-  --color-border-soft: #f2c34d;
-  --color-primary: #805000;
-  --color-primary-hover: #633d00;
-  --color-primary-soft: #fff0a8;
-  --color-primary-border: #ff8c66;
-  --color-accent: #feb952;
-  --color-accent-secondary: #d54215;
-  --color-copy-accent: #593700;
-  --color-focus: #704300;
-  --color-ambient-glow: rgba(245, 122, 0, 0.2);
-  --color-shadow: rgba(93, 56, 0, 0.14);
 }
 
 .app-shell[data-theme='frost'] {
